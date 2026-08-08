@@ -484,6 +484,9 @@
   var THEME_KEY = 'template_sync_theme_v1';
   var GIST_FILENAME = 'templates.json';
 
+  // URLの ?gist=xxx を最優先のGist IDとして扱う（置き場をURLごとに切り替えるための仕組み）
+  var URL_GIST_ID = new URLSearchParams(window.location.search).get('gist') || '';
+
   var state = {
     settings: loadSettings(),
     theme: localStorage.getItem(THEME_KEY) || (window.matchMedia && window.matchMedia('prefers-color-scheme: dark').matches ? 'dark' : 'light'),
@@ -506,6 +509,11 @@
   }
   function saveSettings() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
+  }
+
+  // 実際に同期対象にするGist ID（URL指定があればそれを優先、なければ設定画面で保存したもの）
+  function activeGistId() {
+    return URL_GIST_ID || state.settings.gistId;
   }
 
   function applyTheme() {
@@ -589,7 +597,7 @@
   function fetchGist() {
     state.syncState = 'syncing';
     render();
-    return fetch('https://api.github.com/gists/' + state.settings.gistId, {
+    return fetch('https://api.github.com/gists/' + activeGistId(), {
       headers: ghHeaders()
     }).then(function (res) {
       if (!res.ok) throw new Error('Gistの取得に失敗しました (' + res.status + ')');
@@ -617,7 +625,7 @@
       files: {}
     };
     body.files[GIST_FILENAME] = { content: JSON.stringify(state.templates, null, 2) };
-    return fetch('https://api.github.com/gists/' + state.settings.gistId, {
+    return fetch('https://api.github.com/gists/' + activeGistId(), {
       method: 'PATCH',
       headers: ghHeaders(),
       body: JSON.stringify(body)
@@ -666,41 +674,56 @@
   // ---------- Setup screen ----------
   function renderSetupScreen() {
     var tokenInput, gistIdInput;
-    var wrap = h('div', { class: 'setup-screen' }, [
+    var formChildren = [
       h('h1', {}, ['初期設定']),
-      h('p', {}, ['GitHubのPersonal Access Token（PAT）と、データ保存用のGist IDを設定してください。']),
+      h('p', {}, [URL_GIST_ID
+        ? 'このURLの置き場（Gist）に接続するためのGitHub Personal Access Token（PAT）を設定してください。'
+        : 'GitHubのPersonal Access Token（PAT）と、データ保存用のGist IDを設定してください。']),
       h('div', { class: 'form-group' }, [
         h('label', { class: 'form-label' }, ['GitHub Personal Access Token']),
         (tokenInput = h('input', { class: 'form-input', type: 'password', placeholder: 'ghp_xxxxxxxxxxxx', value: state.settings.token || '' })),
         h('div', { class: 'form-hint' }, ['gist権限のみを付与したトークンを使ってください。'])
-      ]),
-      h('div', { class: 'form-group' }, [
+      ])
+    ];
+    if (URL_GIST_ID) {
+      formChildren.push(h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['Gist ID（このURLで指定されています）']),
+        h('input', { class: 'form-input', type: 'text', value: URL_GIST_ID, disabled: 'disabled', style: 'color:var(--text-muted);' })
+      ]));
+    } else {
+      formChildren.push(h('div', { class: 'form-group' }, [
         h('label', { class: 'form-label' }, ['Gist ID（空欄なら新規作成）']),
         (gistIdInput = h('input', { class: 'form-input', type: 'text', placeholder: '空欄でOK', value: state.settings.gistId || '' }))
-      ]),
-      h('div', { class: 'modal-footer', style: 'justify-content:flex-start;margin-top:8px;' }, [
-        h('button', {
-          class: 'btn-primary',
-          onclick: function () {
-            var token = tokenInput.value.trim();
-            var gistId = gistIdInput.value.trim();
-            if (!token) { showToast('トークンを入力してください', true); return; }
-            state.settings.token = token;
-            saveSettings();
-            if (gistId) {
-              state.settings.gistId = gistId;
-              saveSettings();
-              fetchGist();
-              render();
-            } else {
-              createGist().then(function () { render(); }).catch(function (err) {
-                showToast(err.message, true);
-              });
-            }
+      ]));
+    }
+    formChildren.push(h('div', { class: 'modal-footer', style: 'justify-content:flex-start;margin-top:8px;' }, [
+      h('button', {
+        class: 'btn-primary',
+        onclick: function () {
+          var token = tokenInput.value.trim();
+          if (!token) { showToast('トークンを入力してください', true); return; }
+          state.settings.token = token;
+          saveSettings();
+          if (URL_GIST_ID) {
+            fetchGist();
+            render();
+            return;
           }
-        }, ['保存してはじめる'])
-      ])
-    ]);
+          var gistId = gistIdInput.value.trim();
+          if (gistId) {
+            state.settings.gistId = gistId;
+            saveSettings();
+            fetchGist();
+            render();
+          } else {
+            createGist().then(function () { render(); }).catch(function (err) {
+              showToast(err.message, true);
+            });
+          }
+        }
+      }, ['保存してはじめる'])
+    ]));
+    var wrap = h('div', { class: 'setup-screen' }, formChildren);
     return wrap;
   }
 
@@ -922,10 +945,18 @@
         h('label', { class: 'form-label' }, ['GitHub Personal Access Token']),
         (tokenInput = h('input', { class: 'form-input', type: 'password', value: state.settings.token || '' }))
       ]));
-      modal.appendChild(h('div', { class: 'form-group' }, [
-        h('label', { class: 'form-label' }, ['Gist ID']),
-        (gistIdInput = h('input', { class: 'form-input', type: 'text', value: state.settings.gistId || '' }))
-      ]));
+      if (URL_GIST_ID) {
+        modal.appendChild(h('div', { class: 'form-group' }, [
+          h('label', { class: 'form-label' }, ['Gist ID（このURLで指定されています）']),
+          h('input', { class: 'form-input', type: 'text', value: URL_GIST_ID, disabled: 'disabled', style: 'color:var(--text-muted);' }),
+          h('div', { class: 'form-hint' }, ['別の置き場を使うには、URLの ?gist= の値を変更してください。'])
+        ]));
+      } else {
+        modal.appendChild(h('div', { class: 'form-group' }, [
+          h('label', { class: 'form-label' }, ['Gist ID']),
+          (gistIdInput = h('input', { class: 'form-input', type: 'text', value: state.settings.gistId || '' }))
+        ]));
+      }
       modal.appendChild(h('div', { class: 'modal-footer' }, [
         h('button', { class: 'btn-danger', onclick: function () {
           if (confirm('保存済みの接続情報を削除しますか？（テンプレートのデータ自体はGist上に残ります）')) {
@@ -938,10 +969,12 @@
         h('button', { class: 'btn-secondary', onclick: closeModal }, ['キャンセル']),
         h('button', { class: 'btn-primary', onclick: function () {
           state.settings.token = tokenInput.value.trim();
-          state.settings.gistId = gistIdInput.value.trim();
+          if (!URL_GIST_ID) {
+            state.settings.gistId = gistIdInput.value.trim();
+          }
           saveSettings();
           closeModal();
-          if (state.settings.gistId) fetchGist();
+          if (activeGistId()) fetchGist();
         } }, ['保存'])
       ]));
     }
@@ -1045,7 +1078,7 @@
 
   // ---------- Init ----------
   render();
-  if (state.settings.token && state.settings.gistId) {
+  if (state.settings.token && activeGistId()) {
     fetchGist();
   }
 })();
