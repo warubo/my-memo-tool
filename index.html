@@ -748,17 +748,26 @@
       saveSettings();
       state.templates = initial;
       showToast('新しいGistを作成しました');
-      clearForceNewParam();
+      syncUrlToGistId(gist.id);
       return gist.id;
     });
   }
 
-  function clearForceNewParam() {
-    if (!FORCE_NEW) return;
-    FORCE_NEW = false;
+  // 新規作成後や既存GistのID確定後に、URLを ?gist=そのID の形に揃える（?new=1 は取り除く）
+  function syncUrlToGistId(gistId) {
     var url = new URL(window.location.href);
-    url.searchParams.delete('new');
-    history.replaceState(null, '', url);
+    var changed = false;
+    if (FORCE_NEW) {
+      FORCE_NEW = false;
+      url.searchParams.delete('new');
+      changed = true;
+    }
+    if (gistId && url.searchParams.get('gist') !== gistId) {
+      URL_GIST_ID = gistId;
+      url.searchParams.set('gist', gistId);
+      changed = true;
+    }
+    if (changed) history.replaceState(null, '', url);
   }
 
   // ---------- Setup screen ----------
@@ -814,7 +823,7 @@
             state.settings.gistId = gistId;
             saveSettings();
             saveTitle(title);
-            clearForceNewParam();
+            syncUrlToGistId(gistId);
             fetchGist();
             render();
           } else {
