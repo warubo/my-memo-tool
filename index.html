@@ -830,10 +830,15 @@
                 var titlesNow = loadTitles();
                 delete titlesNow[g.id];
                 localStorage.setItem(TITLES_KEY, JSON.stringify(titlesNow));
-                if (activeGistId() === g.id) {
-                  // 今まさに開いている置き場を消した場合は、初回設定画面に戻す
+                // 保存済み設定（localStorage）がこの置き場を指していたら、必ずクリアしておく
+                // （URLの?gist=とは無関係に、次回?new=1などで開いたときに404で自動接続されるのを防ぐ）
+                var wasSavedAsDefault = state.settings.gistId === g.id;
+                if (wasSavedAsDefault) {
                   state.settings.gistId = '';
                   saveSettings();
+                }
+                if (activeGistId() === g.id) {
+                  // 今まさに開いている置き場を消した場合は、初回設定画面に戻す
                   var url = new URL(window.location.href);
                   url.searchParams.delete('gist');
                   window.location.href = url.toString();
@@ -1420,7 +1425,7 @@
 
   // ---------- Init ----------
   render();
-  if (state.settings.token && activeGistId()) {
+  if (!FORCE_NEW && state.settings.token && activeGistId()) {
     fetchGist();
   }
 })();
