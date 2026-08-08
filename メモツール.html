@@ -514,7 +514,10 @@
   var DEFAULT_TITLE = 'メモ同期ツール';
 
   // URLの ?gist=xxx を最優先のGist IDとして扱う（置き場をURLごとに切り替えるための仕組み）
-  var URL_GIST_ID = new URLSearchParams(window.location.search).get('gist') || '';
+  var URL_PARAMS = new URLSearchParams(window.location.search);
+  var URL_GIST_ID = URL_PARAMS.get('gist') || '';
+  // ?new=1 を付けて開くと、保存済みの接続先があっても必ず初回設定画面（新規の置き場を作る画面）を開く
+  var FORCE_NEW = URL_PARAMS.get('new') === '1';
 
   var state = {
     settings: loadSettings(),
@@ -582,7 +585,7 @@
     applyTitle();
     var root = document.getElementById('root');
     root.innerHTML = '';
-    if (!state.settings.token) {
+    if (!state.settings.token || FORCE_NEW) {
       root.appendChild(renderSetupScreen());
     } else {
       root.appendChild(renderApp());
@@ -745,28 +748,40 @@
       saveSettings();
       state.templates = initial;
       showToast('新しいGistを作成しました');
+      clearForceNewParam();
       return gist.id;
     });
   }
 
+  function clearForceNewParam() {
+    if (!FORCE_NEW) return;
+    FORCE_NEW = false;
+    var url = new URL(window.location.href);
+    url.searchParams.delete('new');
+    history.replaceState(null, '', url);
+  }
+
   // ---------- Setup screen ----------
   function renderSetupScreen() {
+    var effectiveUrlGistId = FORCE_NEW ? '' : URL_GIST_ID;
     var tokenInput, gistIdInput, titleInput;
     var formChildren = [
-      h('h1', {}, ['初期設定']),
-      h('p', {}, [URL_GIST_ID
-        ? 'このURLの置き場（Gist）に接続するためのGitHub Personal Access Token（PAT）を設定してください。'
-        : 'GitHubのPersonal Access Token（PAT）と、データ保存用のGist IDを設定してください。']),
+      h('h1', {}, [FORCE_NEW ? '新しい置き場を作る' : '初期設定']),
+      h('p', {}, [FORCE_NEW
+        ? 'このURLを開くと、常にこの画面が表示されます。トークンを入力し、Gist IDは空欄のまま保存すると新しい置き場が作られます。'
+        : (effectiveUrlGistId
+          ? 'このURLの置き場（Gist）に接続するためのGitHub Personal Access Token（PAT）を設定してください。'
+          : 'GitHubのPersonal Access Token（PAT）と、データ保存用のGist IDを設定してください。')]),
       h('div', { class: 'form-group' }, [
         h('label', { class: 'form-label' }, ['GitHub Personal Access Token']),
         (tokenInput = h('input', { class: 'form-input', type: 'password', placeholder: 'ghp_xxxxxxxxxxxx', value: state.settings.token || '' })),
         h('div', { class: 'form-hint' }, ['gist権限のみを付与したトークンを使ってください。'])
       ])
     ];
-    if (URL_GIST_ID) {
+    if (effectiveUrlGistId) {
       formChildren.push(h('div', { class: 'form-group' }, [
         h('label', { class: 'form-label' }, ['Gist ID（このURLで指定されています）']),
-        h('input', { class: 'form-input', type: 'text', value: URL_GIST_ID, disabled: 'disabled', style: 'color:var(--text-muted);' })
+        h('input', { class: 'form-input', type: 'text', value: effectiveUrlGistId, disabled: 'disabled', style: 'color:var(--text-muted);' })
       ]));
     } else {
       formChildren.push(h('div', { class: 'form-group' }, [
@@ -788,7 +803,7 @@
           state.settings.token = token;
           saveSettings();
           var title = titleInput.value.trim();
-          if (URL_GIST_ID) {
+          if (effectiveUrlGistId) {
             saveTitle(title);
             fetchGist();
             render();
@@ -799,6 +814,7 @@
             state.settings.gistId = gistId;
             saveSettings();
             saveTitle(title);
+            clearForceNewParam();
             fetchGist();
             render();
           } else {
