@@ -648,7 +648,12 @@
   var toastTimer = null;
   function showToast(msg, isError) {
     state.toast = { msg: msg, error: !!isError };
-    render();
+    // render() を呼ぶとモーダルなど画面全体が作り直されてしまうため、
+    // トースト用のDOMだけをその場に生成/更新する
+    var existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    var root = document.getElementById('root');
+    root.appendChild(renderToast());
     clearTimeout(toastTimer);
     requestAnimationFrame(function () {
       var t = document.querySelector('.toast');
@@ -657,7 +662,11 @@
     toastTimer = setTimeout(function () {
       var t = document.querySelector('.toast');
       if (t) t.classList.remove('show');
-      setTimeout(function () { state.toast = null; render(); }, 200);
+      setTimeout(function () {
+        state.toast = null;
+        var t2 = document.querySelector('.toast');
+        if (t2) t2.remove();
+      }, 200);
     }, 2000);
   }
   function renderToast() {
@@ -722,6 +731,137 @@
       render();
       showToast(err.message, true);
     });
+  }
+
+  // このトークンが持つGistの中から templates.json を含むもの（＝このツールの置き場）だけを一覧取得
+  function fetchMemoGistList(token) {
+    return fetch('https://api.github.com/gists?per_page=100', {
+      headers: {
+        'Authorization': 'token ' + token,
+        'Accept': 'application/vnd.github+json'
+      }
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Gist一覧の取得に失敗しました (' + res.status + ')');
+      return res.json();
+    }).then(function (gists) {
+      return gists
+        .filter(function (g) { return g.files && g.files[GIST_FILENAME]; })
+        .map(function (g) {
+          return {
+            id: g.id,
+            description: g.description || '(説明なし)',
+            updatedAt: g.updated_at
+          };
+        })
+        .sort(function (a, b) { return new Date(b.updatedAt) - new Date(a.updatedAt); });
+    });
+  }
+
+  function formatDateTime(iso) {
+    try {
+      var d = new Date(iso);
+      return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+        String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    } catch (e) { return ''; }
+  }
+
+  function goToGist(gistId) {
+    var url = new URL(window.location.href);
+    url.searchParams.delete('new');
+    url.searchParams.set('gist', gistId);
+    window.location.href = url.toString();
+  }
+
+  function deleteGistRemote(token, gistId) {
+    return fetch('https://api.github.com/gists/' + gistId, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'token ' + token,
+        'Accept': 'application/vnd.github+json'
+      }
+    }).then(function (res) {
+      if (!res.ok && res.status !== 404) throw new Error('Gistの削除に失敗しました (' + res.status + ')');
+    });
+  }
+
+  // 「保存済みの置き場から選ぶ」ボタン＋結果一覧の共通UIパーツ
+  // getToken: 現在入力/保存されているトークンを返す関数
+  function renderGistPicker(getToken) {
+    var wrap = h('div', { class: 'form-group' }, []);
+    var resultBox = h('div', {}, []);
+    var pickBtn = h('button', { class: 'btn-secondary', type: 'button' }, ['保存済みの置き場から選ぶ']);
+
+    pickBtn.addEventListener('click', function () {
+      var token = (getToken() || '').trim();
+      if (!token) { showToast('先にトークンを入力してください', true); return; }
+      pickBtn.disabled = true;
+      pickBtn.textContent = '取得中...';
+      resultBox.innerHTML = '';
+      fetchMemoGistList(token).then(function (list) {
+        pickBtn.disabled = false;
+        pickBtn.textContent = '保存済みの置き場から選ぶ';
+        if (list.length === 0) {
+          resultBox.appendChild(h('div', { class: 'form-hint' }, ['メモ置き場（templates.jsonを含むGist）が見つかりませんでした。']));
+          return;
+        }
+        var titles = loadTitles();
+        var listEl = h('div', { style: 'display:flex; flex-direction:column; gap:6px; margin-top:8px; max-height:240px; overflow-y:auto;' }, []);
+        list.forEach(function (g) {
+          var label = titles[g.id] || g.description;
+          var rowWrap = h('div', { style: 'display:flex; gap:6px; align-items:stretch;' }, []);
+          var goBtn = h('button', {
+            type: 'button',
+            class: 'btn-secondary',
+            style: 'display:flex; flex-direction:column; align-items:flex-start; flex:1; min-width:0; text-align:left; gap:2px;',
+            onclick: function () { goToGist(g.id); }
+          }, [
+            h('span', { style: 'font-weight:700;' }, [label]),
+            h('span', { style: 'font-size:0.78rem; color:var(--text-muted); font-weight:400;' }, [g.id + '（更新: ' + formatDateTime(g.updatedAt) + '）'])
+          ]);
+          var delBtn = h('button', {
+            type: 'button',
+            class: 'icon-btn icon-btn-danger',
+            style: 'align-self:center; flex-shrink:0;',
+            title: 'この置き場を削除',
+            onclick: function () {
+              if (!confirm('置き場「' + label + '」を完全に削除します。\nこの操作は取り消せません。中のメモも全て失われます。\n\n本当に削除しますか？')) return;
+              delBtn.disabled = true;
+              deleteGistRemote(token, g.id).then(function () {
+                var titlesNow = loadTitles();
+                delete titlesNow[g.id];
+                localStorage.setItem(TITLES_KEY, JSON.stringify(titlesNow));
+                if (activeGistId() === g.id) {
+                  // 今まさに開いている置き場を消した場合は、初回設定画面に戻す
+                  state.settings.gistId = '';
+                  saveSettings();
+                  var url = new URL(window.location.href);
+                  url.searchParams.delete('gist');
+                  window.location.href = url.toString();
+                  return;
+                }
+                rowWrap.remove();
+                showToast('削除しました');
+              }).catch(function (err) {
+                delBtn.disabled = false;
+                showToast(err.message, true);
+              });
+            }
+          }, [icon('trash')]);
+          rowWrap.appendChild(goBtn);
+          rowWrap.appendChild(delBtn);
+          listEl.appendChild(rowWrap);
+        });
+        resultBox.appendChild(listEl);
+      }).catch(function (err) {
+        pickBtn.disabled = false;
+        pickBtn.textContent = '保存済みの置き場から選ぶ';
+        showToast(err.message, true);
+      });
+    });
+
+    wrap.appendChild(pickBtn);
+    wrap.appendChild(resultBox);
+    return wrap;
   }
 
   function createGist() {
@@ -795,8 +935,10 @@
     } else {
       formChildren.push(h('div', { class: 'form-group' }, [
         h('label', { class: 'form-label' }, ['Gist ID（空欄なら新規作成）']),
-        (gistIdInput = h('input', { class: 'form-input', type: 'text', placeholder: '空欄でOK', value: state.settings.gistId || '' }))
+        (gistIdInput = h('input', { class: 'form-input', type: 'text', placeholder: '空欄でOK', value: state.settings.gistId || '' })),
+        h('div', { class: 'form-hint' }, ['既存の置き場に接続したい場合は、下のボタンで一覧から選べます。'])
       ]));
+      formChildren.push(renderGistPicker(function () { return tokenInput.value; }));
     }
     formChildren.push(h('div', { class: 'form-group' }, [
       h('label', { class: 'form-label' }, ['アプリ名（この置き場だけの表示名）']),
@@ -1072,7 +1214,7 @@
         modal.appendChild(h('div', { class: 'form-group' }, [
           h('label', { class: 'form-label' }, ['Gist ID（このURLで指定されています）']),
           h('input', { class: 'form-input', type: 'text', value: URL_GIST_ID, disabled: 'disabled', style: 'color:var(--text-muted);' }),
-          h('div', { class: 'form-hint' }, ['別の置き場を使うには、URLの ?gist= の値を変更してください。'])
+          h('div', { class: 'form-hint' }, ['下のボタンから他の置き場に切り替えられます。'])
         ]));
       } else {
         modal.appendChild(h('div', { class: 'form-group' }, [
@@ -1080,6 +1222,7 @@
           (gistIdInput = h('input', { class: 'form-input', type: 'text', value: state.settings.gistId || '' }))
         ]));
       }
+      modal.appendChild(renderGistPicker(function () { return tokenInput.value || state.settings.token; }));
       var fileInput = h('input', { type: 'file', accept: 'application/json', style: 'display:none;' });
       fileInput.addEventListener('change', function (e) {
         var file = e.target.files[0];
