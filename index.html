@@ -523,6 +523,7 @@
     settings: loadSettings(),
     theme: localStorage.getItem(THEME_KEY) || (window.matchMedia && window.matchMedia('prefers-color-scheme: dark').matches ? 'dark' : 'light'),
     templates: [],
+    appTitle: '', // Gist（templates.json）側に保存されているアプリ名。空ならlocalStorage/既定値にフォールバック
     loading: false,
     syncState: 'idle', // idle | syncing | synced | error
     search: '',
@@ -557,10 +558,16 @@
       return {};
     }
   }
+  // 優先順位: Gist（templates.json）に保存されたタイトル > この端末のlocalStorageの記憶 > 既定値
   function currentTitle() {
+    if (state.appTitle) return state.appTitle;
     var gistId = activeGistId();
     var titles = loadTitles();
     return (gistId && titles[gistId]) || DEFAULT_TITLE;
+  }
+  // Gist側のタイトルを更新する（実際のGistへの同期は呼び出し側でupdateGist()すること）
+  function setAppTitle(title) {
+    state.appTitle = title || '';
   }
   function saveTitle(title) {
     var gistId = activeGistId();
@@ -684,6 +691,24 @@
     };
   }
 
+  // templates.json の中身をパースする。新形式 {appTitle, templates} と、
+  // 旧形式（配列そのもの）の両方を受け付ける
+  function parseGistContent(raw) {
+    var data;
+    try { data = JSON.parse(raw); } catch (e) { data = []; }
+    if (Array.isArray(data)) {
+      return { appTitle: '', templates: data };
+    }
+    if (data && Array.isArray(data.templates)) {
+      return { appTitle: data.appTitle || '', templates: data.templates };
+    }
+    return { appTitle: '', templates: [] };
+  }
+  // 保存用のJSON文字列を作る（常に新形式で書き出す）
+  function buildGistContent(templates, appTitle) {
+    return JSON.stringify({ appTitle: appTitle || '', templates: templates }, null, 2);
+  }
+
   function fetchGist() {
     state.syncState = 'syncing';
     render();
@@ -694,11 +719,9 @@
       return res.json();
     }).then(function (gist) {
       var file = gist.files && gist.files[GIST_FILENAME];
-      var data = [];
-      if (file && file.content) {
-        try { data = JSON.parse(file.content); } catch (e) { data = []; }
-      }
-      state.templates = Array.isArray(data) ? data : [];
+      var parsed = file && file.content ? parseGistContent(file.content) : { appTitle: '', templates: [] };
+      state.templates = parsed.templates;
+      state.appTitle = parsed.appTitle;
       state.syncState = 'synced';
       render();
     }).catch(function (err) {
@@ -714,7 +737,7 @@
     var body = {
       files: {}
     };
-    body.files[GIST_FILENAME] = { content: JSON.stringify(state.templates, null, 2) };
+    body.files[GIST_FILENAME] = { content: buildGistContent(state.templates, state.appTitle) };
     return fetch('https://api.github.com/gists/' + activeGistId(), {
       method: 'PATCH',
       headers: ghHeaders(),
@@ -869,7 +892,7 @@
     return wrap;
   }
 
-  function createGist() {
+  function createGist(appTitle) {
     var initial = [
       { id: String(Date.now()), title: 'サンプル：お礼メモ', category: 'メール', body: '{{お名前}}様\n\nお世話になっております。\nこの度はありがとうございました。', isPinned: true }
     ];
@@ -881,7 +904,7 @@
         public: false,
         files: (function () {
           var f = {};
-          f[GIST_FILENAME] = { content: JSON.stringify(initial, null, 2) };
+          f[GIST_FILENAME] = { content: buildGistContent(initial, appTitle) };
           return f;
         })()
       })
@@ -892,6 +915,7 @@
       state.settings.gistId = gist.id;
       saveSettings();
       state.templates = initial;
+      state.appTitle = appTitle || '';
       showToast('新しいGistを作成しました');
       syncUrlToGistId(gist.id);
       return gist.id;
@@ -945,11 +969,13 @@
       ]));
       formChildren.push(renderGistPicker(function () { return tokenInput.value; }));
     }
-    formChildren.push(h('div', { class: 'form-group' }, [
-      h('label', { class: 'form-label' }, ['アプリ名（この置き場だけの表示名）']),
-      (titleInput = h('input', { class: 'form-input', type: 'text', placeholder: DEFAULT_TITLE, value: '' })),
-      h('div', { class: 'form-hint' }, ['未入力の場合は「' + DEFAULT_TITLE + '」になります。後から設定画面でも変更できます。'])
-    ]));
+    if (!effectiveUrlGistId) {
+      formChildren.push(h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['アプリ名（新規作成する場合のみ・任意）']),
+        (titleInput = h('input', { class: 'form-input', type: 'text', placeholder: DEFAULT_TITLE, value: '' })),
+        h('div', { class: 'form-hint' }, ['未入力の場合は「' + DEFAULT_TITLE + '」になります。既存の置き場に接続する場合はここで入力しても使われません（Gist側の名前がそのまま使われます）。'])
+      ]));
+    }
     formChildren.push(h('div', { class: 'modal-footer', style: 'justify-content:flex-start;margin-top:8px;' }, [
       h('button', {
         class: 'btn-primary',
@@ -958,9 +984,7 @@
           if (!token) { showToast('トークンを入力してください', true); return; }
           state.settings.token = token;
           saveSettings();
-          var title = titleInput.value.trim();
           if (effectiveUrlGistId) {
-            saveTitle(title);
             fetchGist();
             render();
             return;
@@ -969,13 +993,12 @@
           if (gistId) {
             state.settings.gistId = gistId;
             saveSettings();
-            saveTitle(title);
             syncUrlToGistId(gistId);
             fetchGist();
             render();
           } else {
-            createGist().then(function () {
-              saveTitle(title);
+            var title = titleInput.value.trim();
+            createGist(title).then(function () {
               render();
             }).catch(function (err) {
               showToast(err.message, true);
@@ -1234,21 +1257,28 @@
         if (!file) return;
         var reader = new FileReader();
         reader.onload = function () {
-          var data;
+          var raw;
           try {
-            data = JSON.parse(reader.result);
+            raw = JSON.parse(reader.result);
           } catch (err) {
             showToast('JSONファイルの形式が正しくありません', true);
             return;
           }
-          if (!Array.isArray(data)) {
+          var importedTemplates, importedTitle = null;
+          if (Array.isArray(raw)) {
+            importedTemplates = raw;
+          } else if (raw && Array.isArray(raw.templates)) {
+            importedTemplates = raw.templates;
+            importedTitle = raw.appTitle || '';
+          } else {
             showToast('JSONファイルの形式が正しくありません', true);
             return;
           }
-          if (!confirm('現在のメモ一覧を、読み込んだ ' + data.length + ' 件の内容で完全に置き換えます。よろしいですか？')) return;
+          if (!confirm('現在のメモ一覧を、読み込んだ ' + importedTemplates.length + ' 件の内容で完全に置き換えます。よろしいですか？')) return;
           closeModal();
           persistAndSync(function () {
-            state.templates = data;
+            state.templates = importedTemplates;
+            if (importedTitle !== null) setAppTitle(importedTitle);
           }, 'インポートしました');
         };
         reader.readAsText(file, 'utf-8');
@@ -1259,7 +1289,7 @@
         h('label', { class: 'form-label' }, ['バックアップ']),
         h('div', { style: 'display:flex; gap:8px; flex-wrap:wrap;' }, [
           h('button', { class: 'btn-secondary', onclick: function () {
-            var blob = new Blob([JSON.stringify(state.templates, null, 2)], { type: 'application/json' });
+            var blob = new Blob([buildGistContent(state.templates, state.appTitle)], { type: 'application/json' });
             var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             var ts = new Date().toISOString().slice(0, 10);
@@ -1292,9 +1322,16 @@
             state.settings.gistId = gistIdInput.value.trim();
           }
           saveSettings();
-          saveTitle(titleInput.value.trim());
+          var newTitle = titleInput.value.trim();
+          var titleChanged = newTitle !== currentTitle();
+          setAppTitle(newTitle);
+          saveTitle(newTitle); // Gist未接続時などのための保険としてlocalStorageにも保存
           closeModal();
-          if (activeGistId()) fetchGist();
+          if (titleChanged && activeGistId()) {
+            updateGist(true);
+          } else if (activeGistId()) {
+            fetchGist();
+          }
         } }, ['保存'])
       ]));
     }
