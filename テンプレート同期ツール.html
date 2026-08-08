@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>テンプレート同期ツール</title>
+<style>
+  @font-face {
+    font-family: 'UDPGothic';
+    src: local('UD Digi Kyokasho NP-R'), local('UDデジタル教科書体 NP-R');
+  }
+
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f5f4;
+    --text: rgba(0,0,0,0.95);
+    --text-secondary: #615d59;
+    --text-muted: #a39e98;
+    --border: rgba(0,0,0,0.1);
+    --card-bg: #ffffff;
+    --accent: #0075de;
+    --accent-active: #005bab;
+    --badge-bg: #f2f9ff;
+    --badge-text: #097fe8;
+    --danger: #dd5b00;
+    --success: #1aae39;
+    --shadow-card: rgba(0,0,0,0.04) 0px 4px 18px, rgba(0,0,0,0.027) 0px 2.025px 7.84688px, rgba(0,0,0,0.02) 0px 0.8px 2.925px, rgba(0,0,0,0.01) 0px 0.175px 1.04062px;
+    --shadow-deep: rgba(0,0,0,0.01) 0px 1px 3px, rgba(0,0,0,0.02) 0px 3px 7px, rgba(0,0,0,0.02) 0px 7px 15px, rgba(0,0,0,0.04) 0px 14px 28px, rgba(0,0,0,0.05) 0px 23px 52px;
+  }
+
+  [data-theme="dark"] {
+    --bg: #202020;
+    --bg-alt: #2b2a28;
+    --text: rgba(255,255,255,0.92);
+    --text-secondary: #b8b3ad;
+    --text-muted: #79746e;
+    --border: rgba(255,255,255,0.12);
+    --card-bg: #262625;
+    --accent: #2b9bff;
+    --accent-active: #62aef0;
+    --badge-bg: #0d2b45;
+    --badge-text: #62aef0;
+    --shadow-card: rgba(0,0,0,0.2) 0px 4px 18px, rgba(0,0,0,0.15) 0px 2px 8px;
+    --shadow-deep: rgba(0,0,0,0.3) 0px 14px 28px, rgba(0,0,0,0.35) 0px 23px 52px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: 'UDPGothic', 'UD デジタル 教科書体', 'Yu Gothic', 'Meiryo', -apple-system, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .app {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 16px 16px 80px;
+    min-height: 100vh;
+  }
+
+  header.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 4px;
+    gap: 8px;
+  }
+
+  .app-title {
+    font-size: 1.38rem;
+    font-weight: 700;
+    letter-spacing: -0.25px;
+    margin: 0;
+  }
+
+  .topbar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+  }
+
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.05);
+    color: var(--text);
+    transition: transform 0.15s ease, background 0.15s ease;
+    font-size: 16px;
+  }
+  [data-theme="dark"] .icon-btn { background: rgba(255,255,255,0.08); }
+  .icon-btn:hover { transform: scale(1.05); }
+  .icon-btn:active { transform: scale(0.9); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 0.94rem;
+    font-weight: 600;
+    transition: background 0.15s ease, transform 0.1s ease;
+    white-space: nowrap;
+  }
+  .btn-primary:hover { background: var(--accent-active); }
+  .btn-primary:active { transform: scale(0.95); }
+  .btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; }
+
+  .btn-secondary {
+    background: rgba(0,0,0,0.05);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 0.94rem;
+    font-weight: 600;
+    transition: transform 0.15s ease;
+  }
+  [data-theme="dark"] .btn-secondary { background: rgba(255,255,255,0.08); }
+  .btn-secondary:hover { transform: scale(1.03); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.88rem;
+    font-weight: 600;
+  }
+  .btn-danger:hover { background: rgba(221,91,0,0.1); }
+
+  /* Search & filter */
+  .toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .search-box {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text);
+    font-size: 1rem;
+    font-family: inherit;
+  }
+  .search-box::placeholder { color: var(--text-muted); }
+  .search-box:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .category-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .category-tab {
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    background: rgba(0,0,0,0.05);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  [data-theme="dark"] .category-tab { background: rgba(255,255,255,0.08); }
+  .category-tab.active {
+    background: var(--badge-bg);
+    color: var(--badge-text);
+  }
+
+  /* Cards */
+  .card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    transition: box-shadow 0.15s ease;
+  }
+  .card:hover { box-shadow: var(--shadow-deep); }
+
+  .card-main { flex: 1; min-width: 0; }
+
+  .card-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.25px;
+    cursor: pointer;
+    position: relative;
+  }
+  .card-title:hover { color: var(--accent); text-decoration: underline; }
+  .card-title:hover::after {
+    content: "クリックでコピー";
+    position: absolute;
+    left: 0;
+    top: -22px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #fff;
+    background: rgba(0,0,0,0.8);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .pin-badge {
+    color: var(--accent);
+    font-size: 0.9rem;
+  }
+
+  .category-badge {
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.125px;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    white-space: nowrap;
+  }
+
+  .card-preview {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .card-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 100;
+  }
+
+  .modal {
+    background: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: var(--shadow-deep);
+    width: 100%;
+    max-width: 560px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 24px;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .modal-title {
+    font-size: 1.38rem;
+    font-weight: 700;
+    letter-spacing: -0.25px;
+  }
+
+  .form-group { margin-bottom: 14px; }
+  .form-label {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text-secondary);
+  }
+  .form-input, .form-textarea, .form-select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 1rem;
+    font-family: inherit;
+  }
+  .form-textarea {
+    min-height: 160px;
+    resize: vertical;
+    white-space: pre-wrap;
+  }
+  .form-input:focus, .form-textarea:focus, .form-select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+  }
+  .form-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .modal-body-preview {
+    white-space: pre-wrap;
+    background: var(--bg-alt);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 0.94rem;
+    max-height: 40vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(0,0,0,0.88);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 9999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: var(--shadow-deep);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .toast.error { background: rgba(180,30,30,0.92); }
+
+  .sync-status {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sync-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+  }
+  .sync-dot.syncing { background: var(--accent); animation: pulse 1s infinite; }
+  .sync-dot.error { background: #d33; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+  .fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-deep);
+    transition: transform 0.15s ease, background 0.15s ease;
+    z-index: 50;
+  }
+  .fab:hover { background: var(--accent-active); transform: scale(1.05); }
+  .fab:active { transform: scale(0.92); }
+
+  .setup-screen {
+    max-width: 480px;
+    margin: 60px auto;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-deep);
+    padding: 32px 28px;
+  }
+  .setup-screen h1 {
+    font-size: 1.63rem;
+    font-weight: 700;
+    letter-spacing: -0.625px;
+    margin-top: 0;
+  }
+  .setup-screen p {
+    color: var(--text-secondary);
+    font-size: 0.94rem;
+  }
+
+  .var-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  a { color: var(--accent); }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  @media (max-width: 600px) {
+    .app { padding: 12px 10px 80px; }
+    .app-title { font-size: 1.1rem; }
+    .modal { padding: 18px; border-radius: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'template_sync_settings_v1';
+  var THEME_KEY = 'template_sync_theme_v1';
+  var GIST_FILENAME = 'templates.json';
+
+  var state = {
+    settings: loadSettings(),
+    theme: localStorage.getItem(THEME_KEY) || (window.matchMedia && window.matchMedia('prefers-color-scheme: dark').matches ? 'dark' : 'light'),
+    templates: [],
+    loading: false,
+    syncState: 'idle', // idle | syncing | synced | error
+    search: '',
+    category: 'すべて',
+    modal: null, // {type: 'edit'|'view'|'copyVar'|'settings', data:{...}}
+    toast: null
+  };
+
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : { token: '', gistId: '' };
+    } catch (e) {
+      return { token: '', gistId: '' };
+    }
+  }
+  function saveSettings() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
+  }
+
+  function applyTheme() {
+    document.documentElement.setAttribute('data-theme', state.theme);
+  }
+
+  function render() {
+    applyTheme();
+    var root = document.getElementById('root');
+    root.innerHTML = '';
+    if (!state.settings.token) {
+      root.appendChild(renderSetupScreen());
+    } else {
+      root.appendChild(renderApp());
+    }
+    if (state.modal) {
+      root.appendChild(renderModal());
+    }
+    root.appendChild(renderToast());
+  }
+
+  function h(tag, attrs, children) {
+    var el = document.createElement(tag);
+    attrs = attrs || {};
+    for (var key in attrs) {
+      if (key === 'class') el.className = attrs[key];
+      else if (key === 'html') el.innerHTML = attrs[key];
+      else if (key.indexOf('on') === 0 && typeof attrs[key] === 'function') {
+        el.addEventListener(key.slice(2).toLowerCase(), attrs[key]);
+      } else if (key === 'style') {
+        el.setAttribute('style', attrs[key]);
+      } else {
+        el.setAttribute(key, attrs[key]);
+      }
+    }
+    (children || []).forEach(function (c) {
+      if (c == null) return;
+      if (typeof c === 'string') el.appendChild(document.createTextNode(c));
+      else el.appendChild(c);
+    });
+    return el;
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ---------- Toast ----------
+  var toastTimer = null;
+  function showToast(msg, isError) {
+    state.toast = { msg: msg, error: !!isError };
+    render();
+    clearTimeout(toastTimer);
+    requestAnimationFrame(function () {
+      var t = document.querySelector('.toast');
+      if (t) t.classList.add('show');
+    });
+    toastTimer = setTimeout(function () {
+      var t = document.querySelector('.toast');
+      if (t) t.classList.remove('show');
+      setTimeout(function () { state.toast = null; render(); }, 200);
+    }, 2000);
+  }
+  function renderToast() {
+    var t = h('div', { class: 'toast' + (state.toast && state.toast.error ? ' error' : '') },
+      [state.toast ? state.toast.msg : '']);
+    return t;
+  }
+
+  // ---------- GitHub Gist API ----------
+  function ghHeaders() {
+    return {
+      'Authorization': 'token ' + state.settings.token,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    };
+  }
+
+  function fetchGist() {
+    state.syncState = 'syncing';
+    render();
+    return fetch('https://api.github.com/gists/' + state.settings.gistId, {
+      headers: ghHeaders()
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Gistの取得に失敗しました (' + res.status + ')');
+      return res.json();
+    }).then(function (gist) {
+      var file = gist.files && gist.files[GIST_FILENAME];
+      var data = [];
+      if (file && file.content) {
+        try { data = JSON.parse(file.content); } catch (e) { data = []; }
+      }
+      state.templates = Array.isArray(data) ? data : [];
+      state.syncState = 'synced';
+      render();
+    }).catch(function (err) {
+      state.syncState = 'error';
+      render();
+      showToast(err.message, true);
+    });
+  }
+
+  function updateGist(showMsg) {
+    state.syncState = 'syncing';
+    render();
+    var body = {
+      files: {}
+    };
+    body.files[GIST_FILENAME] = { content: JSON.stringify(state.templates, null, 2) };
+    return fetch('https://api.github.com/gists/' + state.settings.gistId, {
+      method: 'PATCH',
+      headers: ghHeaders(),
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Gistの更新に失敗しました (' + res.status + ')');
+      return res.json();
+    }).then(function () {
+      state.syncState = 'synced';
+      render();
+      if (showMsg) showToast('同期しました');
+    }).catch(function (err) {
+      state.syncState = 'error';
+      render();
+      showToast(err.message, true);
+    });
+  }
+
+  function createGist() {
+    var initial = [
+      { id: String(Date.now()), title: 'サンプル：お礼メール', category: 'メール', body: '{{お名前}}様\n\nお世話になっております。\nこの度はありがとうございました。', isPinned: true }
+    ];
+    return fetch('https://api.github.com/gists', {
+      method: 'POST',
+      headers: ghHeaders(),
+      body: JSON.stringify({
+        description: 'テンプレート同期ツール データ',
+        public: false,
+        files: (function () {
+          var f = {};
+          f[GIST_FILENAME] = { content: JSON.stringify(initial, null, 2) };
+          return f;
+        })()
+      })
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Gistの新規作成に失敗しました (' + res.status + ')');
+      return res.json();
+    }).then(function (gist) {
+      state.settings.gistId = gist.id;
+      saveSettings();
+      state.templates = initial;
+      showToast('新しいGistを作成しました');
+      return gist.id;
+    });
+  }
+
+  // ---------- Setup screen ----------
+  function renderSetupScreen() {
+    var tokenInput, gistIdInput;
+    var wrap = h('div', { class: 'setup-screen' }, [
+      h('h1', {}, ['初期設定']),
+      h('p', {}, ['GitHubのPersonal Access Token（PAT）と、データ保存用のGist IDを設定してください。']),
+      h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['GitHub Personal Access Token']),
+        (tokenInput = h('input', { class: 'form-input', type: 'password', placeholder: 'ghp_xxxxxxxxxxxx', value: state.settings.token || '' })),
+        h('div', { class: 'form-hint' }, ['gist権限のみを付与したトークンを使ってください。'])
+      ]),
+      h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['Gist ID（空欄なら新規作成）']),
+        (gistIdInput = h('input', { class: 'form-input', type: 'text', placeholder: '空欄でOK', value: state.settings.gistId || '' }))
+      ]),
+      h('div', { class: 'modal-footer', style: 'justify-content:flex-start;margin-top:8px;' }, [
+        h('button', {
+          class: 'btn-primary',
+          onclick: function () {
+            var token = tokenInput.value.trim();
+            var gistId = gistIdInput.value.trim();
+            if (!token) { showToast('トークンを入力してください', true); return; }
+            state.settings.token = token;
+            saveSettings();
+            if (gistId) {
+              state.settings.gistId = gistId;
+              saveSettings();
+              fetchGist();
+              render();
+            } else {
+              createGist().then(function () { render(); }).catch(function (err) {
+                showToast(err.message, true);
+              });
+            }
+          }
+        }, ['保存してはじめる'])
+      ])
+    ]);
+    return wrap;
+  }
+
+  // ---------- Main app ----------
+  function getCategories() {
+    var set = {};
+    state.templates.forEach(function (t) { if (t.category) set[t.category] = true; });
+    return ['すべて'].concat(Object.keys(set));
+  }
+
+  function filteredTemplates() {
+    var list = state.templates.slice();
+    if (state.category !== 'すべて') {
+      list = list.filter(function (t) { return t.category === state.category; });
+    }
+    if (state.search.trim()) {
+      var q = state.search.trim().toLowerCase();
+      list = list.filter(function (t) {
+        return (t.title || '').toLowerCase().indexOf(q) !== -1 ||
+               (t.body || '').toLowerCase().indexOf(q) !== -1;
+      });
+    }
+    list.sort(function (a, b) {
+      if (!!b.isPinned !== !!a.isPinned) return (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
+      return 0;
+    });
+    return list;
+  }
+
+  function extractVars(body) {
+    var re = /\{\{([^}]+)\}\}/g;
+    var vars = [];
+    var m;
+    while ((m = re.exec(body || '')) !== null) {
+      if (vars.indexOf(m[1]) === -1) vars.push(m[1]);
+    }
+    return vars;
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    return Promise.resolve();
+  }
+
+  function handleCopyClick(tpl) {
+    var vars = extractVars(tpl.body);
+    if (vars.length > 0) {
+      state.modal = { type: 'copyVar', data: { tpl: tpl, vars: vars } };
+      render();
+    } else {
+      copyText(tpl.body || '').then(function () { showToast('コピーしました！'); });
+    }
+  }
+
+  function persistAndSync(mutateFn, successMsg) {
+    mutateFn();
+    render();
+    updateGist(false).then(function () {
+      if (successMsg) showToast(successMsg);
+    });
+  }
+
+  function togglePin(tpl) {
+    persistAndSync(function () {
+      tpl.isPinned = !tpl.isPinned;
+    });
+  }
+
+  function deleteTemplate(tpl) {
+    if (!confirm('「' + tpl.title + '」を削除しますか？')) return;
+    persistAndSync(function () {
+      state.templates = state.templates.filter(function (t) { return t.id !== tpl.id; });
+    }, '削除しました');
+  }
+
+  function upsertTemplate(data, isNew) {
+    persistAndSync(function () {
+      if (isNew) {
+        data.id = String(Date.now());
+        state.templates.push(data);
+      } else {
+        var idx = state.templates.findIndex(function (t) { return t.id === data.id; });
+        if (idx !== -1) state.templates[idx] = data;
+      }
+    }, isNew ? '追加しました' : '更新しました');
+  }
+
+  function renderApp() {
+    var container = h('div', { class: 'app' }, []);
+
+    var syncDotClass = 'sync-dot' + (state.syncState === 'syncing' ? ' syncing' : state.syncState === 'error' ? ' error' : '');
+    var syncLabel = state.syncState === 'syncing' ? '同期中...' : state.syncState === 'error' ? '同期エラー' : '同期済み';
+
+    container.appendChild(h('header', { class: 'topbar' }, [
+      h('h1', { class: 'app-title' }, ['テンプレート同期']),
+      h('div', { class: 'topbar-actions' }, [
+        h('div', { class: 'sync-status' }, [h('span', { class: syncDotClass }), syncLabel]),
+        h('button', { class: 'icon-btn', title: '手動同期', onclick: function () { fetchGist().then(function(){ showToast('最新の状態に更新しました'); }); } }, ['⟳']),
+        h('button', { class: 'icon-btn', title: 'テーマ切替', onclick: function () {
+          state.theme = state.theme === 'dark' ? 'light' : 'dark';
+          localStorage.setItem(THEME_KEY, state.theme);
+          render();
+        } }, [state.theme === 'dark' ? '☀' : '☾']),
+        h('button', { class: 'icon-btn', title: '設定', onclick: function () {
+          state.modal = { type: 'settings', data: {} };
+          render();
+        } }, ['⚙'])
+      ])
+    ]));
+
+    var toolbar = h('div', { class: 'toolbar' }, []);
+    var searchInput = h('input', {
+      class: 'search-box',
+      type: 'text',
+      placeholder: 'キーワードで検索...',
+      value: state.search
+    });
+    searchInput.addEventListener('input', function (e) {
+      state.search = e.target.value;
+      renderCardList();
+    });
+    toolbar.appendChild(searchInput);
+
+    var tabsWrap = h('div', { class: 'category-tabs' }, []);
+    getCategories().forEach(function (cat) {
+      var tab = h('button', {
+        class: 'category-tab' + (state.category === cat ? ' active' : ''),
+        onclick: function () { state.category = cat; render(); }
+      }, [cat]);
+      tabsWrap.appendChild(tab);
+    });
+    toolbar.appendChild(tabsWrap);
+    container.appendChild(toolbar);
+
+    var listWrap = h('div', { class: 'card-list', id: 'card-list' }, []);
+    container.appendChild(listWrap);
+
+    function renderCardList() {
+      var el = document.getElementById('card-list');
+      if (!el) return;
+      el.innerHTML = '';
+      var list = filteredTemplates();
+      if (list.length === 0) {
+        el.appendChild(h('div', { class: 'empty-state' }, [state.templates.length === 0 ? 'テンプレートがありません。右下の＋から追加してください。' : '該当するテンプレートがありません。']));
+        return;
+      }
+      list.forEach(function (tpl) {
+        el.appendChild(renderCard(tpl));
+      });
+    }
+
+    container.appendChild(h('button', {
+      class: 'fab',
+      title: '新規追加',
+      onclick: function () {
+        state.modal = { type: 'edit', data: { id: null, title: '', category: '', body: '', isPinned: false }, isNew: true };
+        render();
+      }
+    }, ['+']));
+
+    setTimeout(renderCardList, 0);
+
+    return container;
+  }
+
+  function renderCard(tpl) {
+    var preview = (tpl.body || '').slice(0, 120);
+    var card = h('div', { class: 'card' }, [
+      h('div', { class: 'card-main' }, [
+        h('div', { class: 'card-title-row' }, [
+          tpl.isPinned ? h('span', { class: 'pin-badge', title: 'ピン留め' }, ['📌']) : null,
+          h('span', { class: 'card-title', onclick: function () { handleCopyClick(tpl); } }, [tpl.title || '(無題)']),
+          tpl.category ? h('span', { class: 'category-badge' }, [tpl.category]) : null
+        ]),
+        h('div', { class: 'card-preview' }, [preview])
+      ]),
+      h('div', { class: 'card-actions' }, [
+        h('button', { class: 'icon-btn', title: '詳細を見る', onclick: function () {
+          state.modal = { type: 'view', data: tpl };
+          render();
+        } }, ['👁']),
+        h('button', { class: 'icon-btn', title: '編集', onclick: function () {
+          state.modal = { type: 'edit', data: JSON.parse(JSON.stringify(tpl)), isNew: false };
+          render();
+        } }, ['✎']),
+        h('button', { class: 'icon-btn', title: tpl.isPinned ? 'ピン解除' : 'ピン留め', onclick: function () { togglePin(tpl); } }, [tpl.isPinned ? '📍' : '📌']),
+        h('button', { class: 'icon-btn', title: '削除', onclick: function () { deleteTemplate(tpl); } }, ['🗑'])
+      ])
+    ]);
+    return card;
+  }
+
+  // ---------- Modal ----------
+  function closeModal() {
+    state.modal = null;
+    render();
+  }
+
+  function renderModal() {
+    var m = state.modal;
+    var overlay = h('div', { class: 'modal-overlay', onclick: function (e) { if (e.target === overlay) closeModal(); } }, []);
+    var modal = h('div', { class: 'modal' }, []);
+
+    if (m.type === 'settings') {
+      var tokenInput, gistIdInput;
+      modal.appendChild(h('div', { class: 'modal-header' }, [
+        h('div', { class: 'modal-title' }, ['設定']),
+        h('button', { class: 'icon-btn', onclick: closeModal }, ['✕'])
+      ]));
+      modal.appendChild(h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['GitHub Personal Access Token']),
+        (tokenInput = h('input', { class: 'form-input', type: 'password', value: state.settings.token || '' }))
+      ]));
+      modal.appendChild(h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['Gist ID']),
+        (gistIdInput = h('input', { class: 'form-input', type: 'text', value: state.settings.gistId || '' }))
+      ]));
+      modal.appendChild(h('div', { class: 'modal-footer' }, [
+        h('button', { class: 'btn-danger', onclick: function () {
+          if (confirm('保存済みの接続情報を削除しますか？（テンプレートのデータ自体はGist上に残ります）')) {
+            state.settings = { token: '', gistId: '' };
+            saveSettings();
+            state.templates = [];
+            closeModal();
+          }
+        } }, ['接続解除']),
+        h('button', { class: 'btn-secondary', onclick: closeModal }, ['キャンセル']),
+        h('button', { class: 'btn-primary', onclick: function () {
+          state.settings.token = tokenInput.value.trim();
+          state.settings.gistId = gistIdInput.value.trim();
+          saveSettings();
+          closeModal();
+          if (state.settings.gistId) fetchGist();
+        } }, ['保存'])
+      ]));
+    }
+
+    if (m.type === 'view') {
+      var tpl = m.data;
+      modal.appendChild(h('div', { class: 'modal-header' }, [
+        h('div', { class: 'modal-title' }, [tpl.title || '(無題)']),
+        h('button', { class: 'icon-btn', onclick: closeModal }, ['✕'])
+      ]));
+      if (tpl.category) modal.appendChild(h('div', { style: 'margin-bottom:10px;' }, [h('span', { class: 'category-badge' }, [tpl.category])]));
+      modal.appendChild(h('div', { class: 'modal-body-preview' }, [tpl.body || '']));
+      modal.appendChild(h('div', { class: 'modal-footer' }, [
+        h('button', { class: 'btn-secondary', onclick: closeModal }, ['閉じる']),
+        h('button', { class: 'btn-primary', onclick: function () {
+          closeModal();
+          handleCopyClick(tpl);
+        } }, ['コピー'])
+      ]));
+    }
+
+    if (m.type === 'copyVar') {
+      var tpl2 = m.data.tpl;
+      var vars = m.data.vars;
+      var inputs = {};
+      modal.appendChild(h('div', { class: 'modal-header' }, [
+        h('div', { class: 'modal-title' }, ['変数を入力']),
+        h('button', { class: 'icon-btn', onclick: closeModal }, ['✕'])
+      ]));
+      var varList = h('div', { class: 'var-list' }, []);
+      vars.forEach(function (v) {
+        var input = h('input', { class: 'form-input', type: 'text', placeholder: v });
+        inputs[v] = input;
+        varList.appendChild(h('div', { class: 'form-group', style: 'margin-bottom:0;' }, [
+          h('label', { class: 'form-label' }, [v]),
+          input
+        ]));
+      });
+      modal.appendChild(varList);
+      modal.appendChild(h('div', { class: 'modal-footer' }, [
+        h('button', { class: 'btn-secondary', onclick: closeModal }, ['キャンセル']),
+        h('button', { class: 'btn-primary', onclick: function () {
+          var result = tpl2.body || '';
+          vars.forEach(function (v) {
+            var val = inputs[v].value;
+            result = result.split('{{' + v + '}}').join(val);
+          });
+          copyText(result).then(function () {
+            closeModal();
+            showToast('コピーしました！');
+          });
+        } }, ['置換してコピー'])
+      ]));
+    }
+
+    if (m.type === 'edit') {
+      var data = m.data;
+      var titleInput, categoryInput, bodyInput, pinInput;
+      modal.appendChild(h('div', { class: 'modal-header' }, [
+        h('div', { class: 'modal-title' }, [m.isNew ? '新規テンプレート' : 'テンプレート編集']),
+        h('button', { class: 'icon-btn', onclick: closeModal }, ['✕'])
+      ]));
+      modal.appendChild(h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['タイトル']),
+        (titleInput = h('input', { class: 'form-input', type: 'text', value: data.title || '' }))
+      ]));
+      modal.appendChild(h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['カテゴリ']),
+        (categoryInput = h('input', { class: 'form-input', type: 'text', placeholder: '例：メール', value: data.category || '' }))
+      ]));
+      modal.appendChild(h('div', { class: 'form-group' }, [
+        h('label', { class: 'form-label' }, ['本文（{{変数名}} で置換可能な項目を作れます）']),
+        (bodyInput = h('textarea', { class: 'form-textarea' }, [data.body || '']))
+      ]));
+      modal.appendChild(h('div', { class: 'form-group checkbox-row' }, [
+        (pinInput = h('input', { type: 'checkbox' })),
+        h('label', { class: 'form-label', style: 'margin:0;' }, ['ピン留めする'])
+      ]));
+      pinInput.checked = !!data.isPinned;
+      modal.appendChild(h('div', { class: 'modal-footer' }, [
+        h('button', { class: 'btn-secondary', onclick: closeModal }, ['キャンセル']),
+        h('button', { class: 'btn-primary', onclick: function () {
+          var title = titleInput.value.trim();
+          if (!title) { showToast('タイトルを入力してください', true); return; }
+          var newData = {
+            id: data.id,
+            title: title,
+            category: categoryInput.value.trim(),
+            body: bodyInput.value,
+            isPinned: pinInput.checked
+          };
+          closeModal();
+          upsertTemplate(newData, m.isNew);
+        } }, [m.isNew ? '追加' : '保存'])
+      ]));
+    }
+
+    overlay.appendChild(modal);
+    return overlay;
+  }
+
+  // ---------- Init ----------
+  render();
+  if (state.settings.token && state.settings.gistId) {
+    fetchGist();
+  }
+})();
+</script>
+</body>
+</html>
