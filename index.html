@@ -1323,14 +1323,16 @@
           }
           saveSettings();
           var newTitle = titleInput.value.trim();
-          var titleChanged = newTitle !== currentTitle();
-          setAppTitle(newTitle);
           saveTitle(newTitle); // Gist未接続時などのための保険としてlocalStorageにも保存
           closeModal();
-          if (titleChanged && activeGistId()) {
-            updateGist(true);
-          } else if (activeGistId()) {
-            fetchGist();
+          if (activeGistId()) {
+            // 他端末での更新を上書きしないよう、最新を取得してからタイトルを反映して書き込む
+            fetchGist().then(function () {
+              setAppTitle(newTitle);
+              updateGist(true);
+            });
+          } else {
+            setAppTitle(newTitle);
           }
         } }, ['保存'])
       ]));
